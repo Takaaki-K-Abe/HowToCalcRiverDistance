@@ -1,7 +1,7 @@
 # riverdistパッケージの使い方
 
 Rパッケージの`riverdist`の基本的な使い方を載せました。
-サンプルコード中 (`river_dist_calc.Rmd`) で使用しているのは[北海道のシェープファイル](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html#prefecture01)です。
+サンプルコード中 (`river_dist_calc.Rmd`) で使用しているのは[北海道の河川のシェープファイル](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html#prefecture01)です。
 シェープファイルは掲載していませんので、各自データをダウンロードしてご使用ください。
 htmlレポート`river_dist_calc.html`も掲載しているので、そちらもご参照ください。
 
