@@ -1,0 +1,157 @@
+---
+title: riverdistを用いたネットワーク中の距離の算出
+output:
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+---
+
+```{r, eval = 0, include = 0}
+if(!dir.exists("report")) dir.create("report")
+rmarkdown::render(
+  "river_dist_calc.Rmd", output_format = "html_document",
+  clean = TRUE, output_file = "report/river_dist_calc.html")
+```
+
+```{r}
+library(tidyverse)
+library(sf)
+library(riverdist)
+```
+
+```{r}
+theme_set(theme_bw(base_size = 9))
+```
+
+## データの読み込み
+
+- データは事前に国土数値情報から北海道の河川（ライン）ダウンロードしておく (`W05-09_01_GML`)
+
+```{r}
+# データの読み込み
+fname = "W05-09_01_GML/W05-09_01-g_Stream.shp"
+river_line <- st_read(fname)
+
+# 日本語が列名だと不便なので、列名を変更する
+names(river_line) <- c(
+  "system_code", "river_code", "type", "rivername",
+  "startID", "endID", "ref", "direction", "riv_st_ID", "riv_end_ID",
+  "geometry"
+  )
+```
+
+## 河川データのフィルタリング
+
+- 石狩川水系の水系コード(810103)でフィルタリングできる
+- 水系コードは国土数値情報の[水系域コード](https://nlftp.mlit.go.jp/ksj/gml/codelist/WaterSystemCodeCd.html)を適宜参照する
+
+```{r}
+# 石狩川水系
+ishikari <- river_line %>% filter(system_code == "810103")
+```
+
+```{r}
+head(ishikari)
+```
+
+- CRSが未設定になっているのがわかる
+
+## CRSの設定
+
+```{r, fig.cap = cap}
+# crs未設定
+ggplot(ishikari) + geom_sf()
+cap = "crsが未設定だとx軸とy軸はただの値が表示される"
+```
+
+```{r, fig.cap = cap}
+# crsを追加する
+st_crs(ishikari) = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+
+ggplot(ishikari) + geom_sf() + geom_sf(data = loc, inherit.aes = FALSE)
+
+cap = "crsを設定すると緯度軽度表示になっていることがわかる"
+```
+
+
+## ポイントデータの追加
+
+```{r}
+loc <- st_read("pointdata.csv",
+  options = c("X_POSSIBLE_NAMES=lon","Y_POSSIBLE_NAMES=lat"), quiet = TRUE)
+st_crs(loc) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+```
+
+```{r}
+ggplot(ishikari) + geom_sf() +
+  geom_sf(data = loc, inherit.aes = FALSE, color = "red", size = 5)
+```
+
+
+## ネットワークの作成
+
+riverdistではネットワークを作るところから始まる。
+ラインが細かすぎると処理が遅いのでデータの区間を限定したほうがよい。
+今回は区間種別でフィルターを作成するが、QGISなどですでに処理済みのデータを作成しておいてもよい
+
+```{r}
+ishikari_filtered <-  ishikari %>% mutate(type = as.numeric(type)) %>% 
+  filter(type == 1)
+
+ggplot(ishikari_filtered) + geom_sf() + 
+  geom_sf(data = loc, inherit.aes = FALSE, color = "red", size = 5)
+```
+
+### 作業
+
+1. UTM座標系に変換
+2. `spatial dataframe`にデータ形式を変更する
+3. `line2network()`でネットワークを作成する
+
+```{r}
+# UTM座標系に変換
+ishikari_utm <- st_transform(ishikari_filtered, "+init=epsg:32654")
+ishikari_river_network <- line2network(as_Spatial(ishikari_utm))
+plot(ishikaririve_network)
+```
+
+## 河川中でのポイントデータの位置を計算する
+
+```{r}
+# ポイントデータをutm座標系に変換する
+points <- st_transform(loc, "+init=epsg:32654") %>% 
+  mutate(
+    x = st_coordinates(geometry)[, 1],
+    y = st_coordinates(geometry)[, 2]
+  )
+
+# ポイントデータのriver networkの中での位置を算出する
+locs_in_river <- xy2segvert(
+  x = points$x, y = points$y,
+  rivers = ishikari_river_network)
+```
+
+## 距離を算出する
+
+```{r}
+# 距離行列を算出する
+distmat <- riverdistancemat(
+  locs_in_river$seg, locs_in_river$vert, ishikari_river_network
+)
+```
+
+
+## 参考URL
+
+### shape fileについて
+
+- [国土数値情報ダウンロードサービス:河川](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html)
+
+### sf
+
+- [RでGISをやるときにはsfパッケージ、という世の中になるらしい。](https://notchained.hatenablog.com/entry/2017/01/06/213333)
+- [sfパッケージを用いてRでの空間データの取り扱いを学ぶ](https://tsukubar.github.io/r-spatial-guide/simple-feature-for-r.html):
+  - sfからspへの変換
+- [Load a CSV as Simple Features R](https://gis.stackexchange.com/questions/305403/load-a-csv-as-simple-features-r): csvファイルをsfで読み込む
+- [Rを使った地理空間情報データの処理～その2～](https://qiita.com/iwasaki_kenichi/items/e2f0c6777263a93c7230): 座標系の設定と変換について
+- [CRSの追加](https://keita43a.hatenablog.com/entry/2018/10/24/004341)
